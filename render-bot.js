@@ -9,25 +9,38 @@ app.use(express.json());
 
 const TG_API = 'https://api.telegram.org/bot' + TOKEN;
 
-// 模型调用（直接用 NVIDIA / GitHub，不需要本地 bridge）
+// 模型调用（优先 GitHub gpt-4.1-nano 速度快，NVIDIA 兜底）
 async function callAI(text) {
-  const key = process.env.NVIDIA_KEY || process.env.GITHUB_TOKEN;
-  const base = process.env.NVIDIA_KEY
-    ? 'https://integrate.api.nvidia.com/v1'
-    : 'https://models.inference.ai.azure.com';
-  const model = process.env.NVIDIA_KEY
-    ? 'meta/llama-3.1-70b-instruct'
-    : 'gpt-4.1-nano';
+  const ghKey = process.env.GITHUB_TOKEN;
+  const nvKey = process.env.NVIDIA_KEY;
 
-  const res = await fetch(base + '/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: text }], max_tokens: 1024 }),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) return '❌ 处理失败，请稍后重试';
-  const d = await res.json();
-  return d.choices?.[0]?.message?.content || '✅ 已处理（无返回内容）';
+  // GitHub (响应快)
+  if (ghKey) {
+    try {
+      const res = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + ghKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [{ role: 'user', content: text }], max_tokens: 1024 }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (res.ok) { const d = await res.json(); return d.choices?.[0]?.message?.content || '✅ 已处理'; }
+    } catch {}
+  }
+
+  // NVIDIA (兜底)
+  if (nvKey) {
+    try {
+      const res = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + nvKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'meta/llama-3.1-70b-instruct', messages: [{ role: 'user', content: text }], max_tokens: 1024 }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (res.ok) { const d = await res.json(); return d.choices?.[0]?.message?.content || '✅ 已处理'; }
+    } catch {}
+  }
+
+  return '❌ 处理失败，请确认环境变量 GITHUB_TOKEN 或 NVIDIA_KEY 已设置';
 }
 
 app.post('/webhook', async (req, res) => {
