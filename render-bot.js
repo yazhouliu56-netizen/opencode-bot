@@ -32,7 +32,17 @@ async function callAI(text) {
 
 app.post('/webhook', async (req, res) => {
   const msg = req.body.message;
-  if (!msg || !msg.text) { res.sendStatus(200); return; }
+  if (!msg) { res.sendStatus(200); return; }
+  // 不支持图片/文件/非文字输入
+  if (!msg.text) {
+    const chatId = msg.chat.id;
+    await fetch(TG_API + '/sendMessage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: '抱歉，我只支持文字消息。请直接发文字给我。' }),
+    });
+    res.sendStatus(200); return;
+  }
 
   const chatId = msg.chat.id;
   const text = msg.text;
