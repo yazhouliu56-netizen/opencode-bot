@@ -4,18 +4,27 @@
 
 export default {
   async fetch(request, env) {
-    // 只接收 POST
+    const url = new URL(request.url);
+
+    // 特殊端点：在浏览器访问 /setup 即可设置 Webhook
+    if (url.pathname === '/setup') {
+      const webhookUrl = url.origin + '/webhook';
+      const res = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/setWebhook?url=' + webhookUrl);
+      const data = await res.json();
+      return new Response(JSON.stringify(data, null, 2), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 只接收 POST (Telegram Webhook)
     if (request.method !== 'POST') {
       return new Response('OK');
     }
 
     const update = await request.json();
-
-    // 只处理消息
     const msg = update.message;
     if (!msg) return new Response('OK');
 
-    // 只处理文字消息
     if (!msg.text) {
       await send(env.TELEGRAM_BOT_TOKEN, msg.chat.id, '抱歉，我只支持文字消息，不支持图片/文件。');
       return new Response('OK');
@@ -23,16 +32,10 @@ export default {
 
     const text = msg.text;
     const chatId = msg.chat.id;
-
-    // 发送"处理中"提示
     await send(env.TELEGRAM_BOT_TOKEN, chatId, '⏳ 处理中...');
 
-    // 调用 AI
     const reply = await callAI(env, text);
-
-    // 发送结果
     await send(env.TELEGRAM_BOT_TOKEN, chatId, reply.slice(0, 4000));
-
     return new Response('OK');
   },
 };
