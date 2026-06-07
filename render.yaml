@@ -2,7 +2,7 @@ services:
   - type: web
     name: opencode-bot
     runtime: node
-    repo: https://github.com/yazhouliu56/opencode-bot
+    repo: https://github.com/yazhouliu56-netizen/opencode-bot
     buildCommand: npm install
     startCommand: node render-bot.js
     envVars:
