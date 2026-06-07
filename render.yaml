@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: opencode-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: node bot.js
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false

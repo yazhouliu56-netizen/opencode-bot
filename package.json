@@ -1,0 +1,10 @@
+{
+  "name": "opencode-bot",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
