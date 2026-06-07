@@ -1,0 +1,12 @@
+{
+  "name": "opencode-bot",
+  "version": "1.0.0",
+  "description": "OpenCode Telegram Bot - Remote control for AI coding assistant",
+  "main": "render-bot.js",
+  "scripts": {
+    "start": "node render-bot.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

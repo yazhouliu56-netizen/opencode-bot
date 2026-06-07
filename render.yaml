@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: opencode-bot
+    runtime: node
+    repo: https://github.com/yazhouliu56/opencode-bot
+    buildCommand: npm install
+    startCommand: node render-bot.js
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: NVIDIA_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
