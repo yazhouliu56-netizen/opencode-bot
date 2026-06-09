@@ -145,10 +145,24 @@ function handleMessage(msg) {
   if (msg.text) {
     const t = msg.text.trim();
     const isCmd = t.startsWith("/");
-    if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/status - Status\n/help - Commands");
-    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/status - Info & Search\n/ping - Pong");
+    if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/read <url> - Read & summarize a webpage\n/status - Status\n/help - Commands");
+    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/read <url> - Summarize a webpage\n/status - Info\n/ping - Pong");
     if (t === "/status") return send(chat, "Bot online\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: " + (GH_TOKEN ? "GPT-4o" : "off") + "\nVoice: " + (GH_TOKEN ? "Whisper" : "off"));
     if (t === "/ping") return send(chat, "pong");
+    if (t.startsWith("/read ")) {
+      sendAction(chat, "typing");
+      const url = t.slice(6).trim();
+      if (!url.startsWith("http")) return send(chat, "Invalid URL. Use /read https://...");
+      httpsBuffer(url).then(buf => {
+        const html = buf.toString("utf8").replace(/<script[^>]*>[\s\S]*?<\/script>/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 4000);
+        if (html.length < 50) return send(chat, "Could not read page content.");
+        httpsPost("models.inference.ai.azure.com", "/chat/completions", {
+          model: "gpt-4o-mini", max_tokens: 512,
+          messages: [{ role: "system", content: "Summarize this webpage content concisely in Chinese." }, { role: "user", content: html }]
+        }, { "Authorization": "Bearer " + GH_TOKEN }).then(d => send(chat, d?.choices?.[0]?.message?.content || "Summary failed.")).catch(() => send(chat, "AI error."));
+      }).catch(() => send(chat, "Failed to fetch URL."));
+      return;
+    }
     if (!isCmd) {
       send(chat, "Thinking...");
       askAI(t).then(a => send(chat, a || "AI unavailable")).catch(() => send(chat, "Error"));
