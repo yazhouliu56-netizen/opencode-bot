@@ -78,9 +78,8 @@ async function askAI(question) {
   const today = new Date().toISOString().slice(0, 10);
   let context = "";
   try { context = await searchWeb(question); } catch {}
-  const sysMsg = "You are OpenCode AI assistant. Today is " + today + ". Answer helpfully and concisely. Use the web context below if relevant.";
-  const msgs = [{ role: "system", content: sysMsg }, { role: "user", content: question }];
-  if (context) msgs.splice(1, 0, { role: "system", content: "Web context:\n" + context });
+  const msgs = [{ role: "system", content: "You are OpenCode AI assistant. Today is " + today + ". Answer directly from the web context below. Do NOT tell users to check sources themselves - you summarize the information for them." }, { role: "user", content: question }];
+  if (context) msgs.splice(1, 0, { role: "system", content: "Web search results (use these to answer directly):\n" + context });
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
       model: "gpt-4o-mini", messages: msgs, max_tokens: 1024,
