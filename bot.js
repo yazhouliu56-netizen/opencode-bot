@@ -2,6 +2,8 @@ const http = require("http");
 const https = require("https");
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GH_TOKEN = process.env.GITHUB_TOKEN;
+const GA_KEY = process.env.GOOGLE_API_KEY;
+const GA_CX = process.env.GOOGLE_CX;
 const PORT = process.env.PORT || 3000;
 
 function httpsPost(host, path, body, extraHeaders) {
@@ -35,7 +37,20 @@ async function downloadTelegramFile(fileId) {
   return await httpsBuffer("https://api.telegram.org/file/bot" + TOKEN + "/" + f.result.file_path);
 }
 
-async function searchWeb(query) {
+async function searchGoogle(query) {
+  if (!GA_KEY || !GA_CX) return null;
+  const url = "https://www.googleapis.com/customsearch/v1?key=" + GA_KEY + "&cx=" + GA_CX + "&q=" + encodeURIComponent(query) + "&hl=zh-CN&num=3";
+  return new Promise(resolve => {
+    https.get(url, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => {
+      try {
+        const items = JSON.parse(d).items || [];
+        resolve(items.map((i, idx) => (idx + 1) + ". " + i.title + " - " + (i.link || "") + "\n   " + (i.snippet || "")).join("\n\n").slice(0, 2000));
+      } catch { resolve(null); }
+    }); }).on("error", () => resolve(null));
+  });
+}
+
+async function searchDuck(query) {
   return new Promise(resolve => {
     const r = https.get("https://lite.duckduckgo.com/lite/?q=" + encodeURIComponent(query), { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0" } }, res => {
       let d = ""; res.on("data", c => d += c); res.on("end", () => {
@@ -53,6 +68,9 @@ async function searchWeb(query) {
     r.end();
   });
 }
+
+async function searchWeb(query) {
+  return (await searchGoogle(query)) || (await searchDuck(query)) || "";
 
 async function askAI(question) {
   if (!GH_TOKEN) return null;
@@ -128,8 +146,8 @@ function handleMessage(msg) {
     const t = msg.text.trim();
     const isCmd = t.startsWith("/");
     if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/status - Status\n/help - Commands");
-    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/status - Status\n/ping - Pong");
-    if (t === "/status") return send(chat, "Bot online (Webhook)\nAI: " + (GH_TOKEN ? "Connected" : "No GITHUB_TOKEN"));
+    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/status - Info & Search\n/ping - Pong");
+    if (t === "/status") return send(chat, "Bot online\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: " + (GH_TOKEN ? "GPT-4o" : "off") + "\nVoice: " + (GH_TOKEN ? "Whisper" : "off"));
     if (t === "/ping") return send(chat, "pong");
     if (!isCmd) {
       send(chat, "Thinking...");
