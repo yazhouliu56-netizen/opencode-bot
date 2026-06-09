@@ -16,7 +16,7 @@ app.post("/webhook", (req, res) => {
   } else if (text === "/help") {
     send(chatId, "/start - Welcome\n/status - System status\n/ping - Latency test\n/echo <text> - Echo back");
   } else if (text === "/status") {
-    send(chatId, "✅ Bot online (Webhook mode)");
+    send(chatId, "Bot online (Webhook mode)");
   } else if (text === "/ping") {
     send(chatId, "pong");
   } else if (text.startsWith("/echo ")) {
@@ -31,7 +31,8 @@ app.get("/", (req, res) => res.send("OK"));
 
 async function send(chatId, text) {
   try {
-    await fetch("https://api.telegram.org/bot" + TOKEN + "/sendMessage", {
+    const url = "https://api.telegram.org/bot" + TOKEN + "/sendMessage";
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
@@ -40,7 +41,8 @@ async function send(chatId, text) {
 }
 
 async function setWebhook() {
-  const base = process.env.RENDER_EXTERNAL_URL || ("https://opencode-bot.onrender.com");
+  if (!TOKEN) { console.log("No TOKEN, skipping webhook"); return; }
+  const base = process.env.RENDER_EXTERNAL_URL || "https://opencode-bot.onrender.com";
   try {
     const r = await fetch("https://api.telegram.org/bot" + TOKEN + "/setWebhook?url=" + base + "/webhook");
     const d = await r.json();
@@ -48,4 +50,7 @@ async function setWebhook() {
   } catch (e) { console.error("Webhook fail:", e.message); }
 }
 
-app.listen(PORT, () => { console.log("Bot on :" + PORT); setWebhook(); });
+app.listen(PORT, () => {
+  console.log("Bot on port " + PORT);
+  setTimeout(setWebhook, 1000);
+});
