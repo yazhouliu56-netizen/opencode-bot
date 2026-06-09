@@ -69,20 +69,64 @@ async function searchDuck(query) {
   });
 }
 
-async function searchWeb(query) {
-  return (await searchGoogle(query)) || (await searchDuck(query)) || "";
+const STOCK_PATTERN = /\b([A-Z]{1,5}(?:\.(?:HK|SS|SZ|T|L|PA|DE|TO|VI))?)\b/;
+const WEATHER_PATTERN = /(weather|天气|气温|温度|下雨|晴天|气温|台风|温哥华|北京|上海|深圳|广州|成都|杭州|武汉|南京|重庆|苏州|天津|长沙|郑州|东莞|青岛|西安|合肥|福州|昆明|大连|厦门|无锡|宁波|沈阳|长春|哈尔滨|济南|石家庄|南宁|贵阳|海口|太原|兰州|南昌|呼和浩特|银川|西宁|拉萨|乌鲁木齐|香港|台北|澳门|东京|首尔|纽约|伦敦|巴黎|柏林|悉尼|新加坡|曼谷|迪拜|莫斯科|多伦多|温哥华)/i;
+
+async function fetchStock(sym) {
+  try {
+    const buf = await httpsBuffer("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(sym) + "?interval=1d&range=5d");
+    const m = JSON.parse(buf.toString()).chart.result[0].meta;
+    return "Stock: " + m.shortName + " (" + m.symbol + ") = " + m.regularMarketPrice + " " + m.currency + " (High: " + m.regularMarketDayHigh + " Low: " + m.regularMarketDayLow + " Vol: " + m.regularMarketVolume.toLocaleString() + ")";
+  } catch { return null; }
+}
+
+async function fetchStockFromQuery(query) {
+  const m = query.match(STOCK_PATTERN);
+  if (!m) return null;
+  const sym = m[1];
+  if (!sym.includes(".")) {
+    for (const suffix of ["", ".HK", ".SS"]) {
+      const r = await fetchStock(sym + suffix);
+      if (r) return r;
+    }
+    return null;
+  }
+  return await fetchStock(sym);
+}
+
+async function fetchWeather(query) {
+  const m = query.match(WEATHER_PATTERN);
+  if (!m) return null;
+  const loc = m[1];
+  return new Promise(resolve => {
+    const r = https.get("https://wttr.in/" + encodeURIComponent(loc) + "?format=%l:+%C+%t+%w+%h", { timeout: 5000, headers: { "User-Agent": "curl" } }, res => {
+      let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d.trim() ? "Weather: " + d.trim() : null));
+    });
+    r.on("error", () => resolve(null));
+    r.end();
+  });
+}
+
+async function enrichContext(query) {
+  const results = [];
+  const stock = await fetchStockFromQuery(query);
+  if (stock) results.push(stock);
+  const weather = await fetchWeather(query);
+  if (weather) results.push(weather);
+  const web = (await searchGoogle(query)) || (await searchDuck(query));
+  if (web) results.push("Web:\n" + web);
+  return results.join("\n\n");
 }
 
 async function askAI(question) {
   if (!GH_TOKEN) return null;
   const today = new Date().toISOString().slice(0, 10);
   let context = "";
-  try { context = await searchWeb(question); } catch {}
-  const msgs = [{ role: "system", content: "You are OpenCode AI assistant. Today is " + today + ". Answer directly from the web context below. Do NOT tell users to check sources themselves - you summarize the information for them." }, { role: "user", content: question }];
-  if (context) msgs.splice(1, 0, { role: "system", content: "Web search results (use these to answer directly):\n" + context });
+  try { context = await enrichContext(question); } catch {}
+  const sysMsg = "You are OpenCode AI assistant. Today is " + today + ". You have access to real-time data below. Answer the user directly using it. Do NOT tell users to check sources themselves." + (context ? "\n\nReal-time data:\n" + context : "");
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-      model: "gpt-4o", messages: msgs, max_tokens: 1024,
+      model: "gpt-4o", messages: [{ role: "system", content: sysMsg }, { role: "user", content: question }], max_tokens: 1024,
     }, { "Authorization": "Bearer " + GH_TOKEN });
     return d?.choices?.[0]?.message?.content || null;
   } catch { return null; }
