@@ -189,7 +189,7 @@ function handleMessage(msg) {
     const isCmd = t.startsWith("/");
     if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/read <url> - Read webpage\n/stock <code> - Stock price\n/status - Status");
     if (t === "/help") return send(chat, "Send text/photos/voice. AI auto-answers.\n/read <url> - Summarize webpage\n/stock <code> - Stock price (e.g. AAPL, 0700.HK)\n/status - Info\n/ping - Pong");
-    if (t === "/status") return send(chat, "Bot online\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: " + (GH_TOKEN ? "GPT-4o" : "off") + "\nVoice: " + (GH_TOKEN ? "Whisper" : "off") + "\nStock: Yahoo Finance");
+    if (t === "/status") return send(chat, "Bot online\nModel: DeepSeek-R1\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: GPT-4o\nVoice: Whisper\nStock: Yahoo Finance\nWeather: wttr.in");
     if (t === "/ping") return send(chat, "pong");
     if (t.startsWith("/stock ")) {
       sendAction(chat, "typing");
