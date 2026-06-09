@@ -42,7 +42,7 @@ async function send(chatId, text) {
 
 async function setWebhook() {
   if (!TOKEN) { console.log("No TOKEN"); return; }
-  const base = process.env.RENDER_EXTERNAL_URL || "https://opencode-bot.onrender.com";
+  const base = process.env.RENDER_EXTERNAL_URL || "https://opencode-bot-80xf.onrender.com";
   try {
     const d = await httpsGet("api.telegram.org", "/bot" + TOKEN + "/setWebhook?url=" + base + "/webhook");
     console.log("Webhook:", d?.description || "?");
