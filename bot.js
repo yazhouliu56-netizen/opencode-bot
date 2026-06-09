@@ -108,14 +108,12 @@ async function fetchWeather(query) {
 }
 
 async function enrichContext(query) {
-  const results = [];
   const stock = await fetchStockFromQuery(query);
-  if (stock) results.push(stock);
+  if (stock) return "[STOCK DATA]\n" + stock;
   const weather = await fetchWeather(query);
-  if (weather) results.push(weather);
+  if (weather) return "[WEATHER DATA]\n" + weather;
   const web = (await searchGoogle(query)) || (await searchDuck(query));
-  if (web) results.push("Web:\n" + web);
-  return results.join("\n\n");
+  return web ? "[WEB SEARCH]\n" + web : "";
 }
 
 async function askAI(question) {
@@ -126,7 +124,7 @@ async function askAI(question) {
   const sysMsg = "You are OpenCode AI assistant. Today is " + today + ". You have access to real-time data below. Answer the user directly using it. Do NOT tell users to check sources themselves." + (context ? "\n\nReal-time data:\n" + context : "");
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-      model: "gpt-4o", messages: [{ role: "system", content: sysMsg }, { role: "user", content: question }], max_tokens: 1024,
+      model: "deepseek-r1", messages: [{ role: "system", content: sysMsg }, { role: "user", content: question }], max_tokens: 2048,
     }, { "Authorization": "Bearer " + GH_TOKEN });
     return d?.choices?.[0]?.message?.content || null;
   } catch { return null; }
@@ -213,7 +211,7 @@ function handleMessage(msg) {
         const html = buf.toString("utf8").replace(/<script[^>]*>[\s\S]*?<\/script>/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 4000);
         if (html.length < 50) return send(chat, "Could not read page content.");
         httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-          model: "gpt-4o", max_tokens: 512,
+          model: "deepseek-r1", max_tokens: 1024,
           messages: [{ role: "system", content: "Summarize this webpage content concisely in Chinese." }, { role: "user", content: html }]
         }, { "Authorization": "Bearer " + GH_TOKEN }).then(d => send(chat, d?.choices?.[0]?.message?.content || "Summary failed.")).catch(() => send(chat, "AI error."));
       }).catch(() => send(chat, "Failed to fetch URL."));
