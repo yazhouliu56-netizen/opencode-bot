@@ -27,7 +27,7 @@ async function askAI(question) {
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: question }],
+      messages: [{ role: "system", content: "You are a helpful assistant. Answer concisely in the user's language." }, { role: "user", content: question }],
       max_tokens: 512,
     });
     return d?.choices?.[0]?.message?.content || null;
@@ -58,25 +58,19 @@ const server = http.createServer((req, res) => {
         if (msg && msg.text) {
           const t = msg.text.trim();
           const chat = msg.chat.id;
+          const isCmd = t.startsWith("/");
 
           if (t === "/start") {
-            send(chat, "Hello! I am OpenCode Bot.\n/help - Commands\n/ask <q> - AI answer\n/status - Status\n/ping - Pong");
+            send(chat, "Hello! I am OpenCode Bot.\n直接发文字给我，我会用AI回答。\n/status - Status\n/help - Commands");
           } else if (t === "/help") {
-            send(chat, "/ask <q> - Ask AI\n/status - Status\n/ping - Pong\n/echo <t> - Echo");
+            send(chat, "直接发文字给我即可。\n/status - 状态\n/ping - Pong");
           } else if (t === "/status") {
-            let s = "Bot online (Webhook)\n";
-            s += GH_TOKEN ? "AI: Connected\n" : "AI: No GITHUB_TOKEN (set in ENV)\n";
-            send(chat, s);
+            send(chat, "Bot online (Webhook)\nAI: " + (GH_TOKEN ? "Connected" : "No GITHUB_TOKEN"));
           } else if (t === "/ping") {
             send(chat, "pong");
-          } else if (t.startsWith("/ask ")) {
-            const q = t.slice(5);
+          } else if (!isCmd) {
             send(chat, "Thinking...");
-            askAI(q).then(a => send(chat, a || "AI unavailable (set GITHUB_TOKEN)")).catch(() => send(chat, "Error"));
-          } else if (t.startsWith("/echo ")) {
-            send(chat, t.slice(6));
-          } else {
-            send(chat, "Unknown: " + t + "\nUse /help");
+            askAI(t).then(a => send(chat, a || "AI unavailable")).catch(() => send(chat, "Error"));
           }
         }
       } catch {}
