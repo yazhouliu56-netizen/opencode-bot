@@ -71,6 +71,7 @@ async function searchDuck(query) {
 
 async function searchWeb(query) {
   return (await searchGoogle(query)) || (await searchDuck(query)) || "";
+}
 
 async function askAI(question) {
   if (!GH_TOKEN) return null;
