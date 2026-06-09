@@ -23,6 +23,18 @@ function httpsGet(host, path) {
   });
 }
 
+function httpsBuffer(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, res => { let d = []; res.on("data", c => d.push(c)); res.on("end", () => resolve(Buffer.concat(d))); }).on("error", reject);
+  });
+}
+
+async function downloadTelegramFile(fileId) {
+  const f = await httpsGet("api.telegram.org", "/bot" + TOKEN + "/getFile?file_id=" + fileId);
+  if (!f?.result?.file_path) return null;
+  return await httpsBuffer("https://api.telegram.org/file/bot" + TOKEN + "/" + f.result.file_path);
+}
+
 async function searchWeb(query) {
   return new Promise(resolve => {
     const r = https.get("https://s.jina.ai/" + encodeURIComponent(query), { timeout: 8000 }, res => {
@@ -52,9 +64,47 @@ async function askAI(question) {
   } catch { return null; }
 }
 
+async function analyzeImage(base64, mime) {
+  if (!GH_TOKEN) return "AI unavailable (no GITHUB_TOKEN)";
+  try {
+    const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
+      model: "gpt-4o", max_tokens: 512,
+      messages: [{
+        role: "user", content: [
+          { type: "text", text: "Describe this image in detail in the user's language." },
+          { type: "image_url", image_url: { url: "data:" + mime + ";base64," + base64 } }
+        ]
+      }]
+    }, { "Authorization": "Bearer " + GH_TOKEN });
+    return d?.choices?.[0]?.message?.content || "Could not analyze image.";
+  } catch { return "Vision API error."; }
+}
+
+async function transcribeAudio(base64) {
+  if (!GH_TOKEN) return "AI unavailable (no GITHUB_TOKEN)";
+  const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+  const body = Buffer.concat([
+    Buffer.from("--" + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="voice.ogg"\r\nContent-Type: audio/ogg\r\n\r\n'),
+    Buffer.from(base64, "base64"),
+    Buffer.from('\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n--' + boundary + '--\r\n')
+  ]);
+  return new Promise(resolve => {
+    const opts = { hostname: "models.inference.ai.azure.com", path: "/openai/deployments/whisper/audio/transcriptions?api-version=2024-10-21", method: "POST", headers: { "Content-Type": "multipart/form-data; boundary=" + boundary, "Content-Length": body.length, "Authorization": "Bearer " + GH_TOKEN } };
+    const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d).text); } catch { resolve(null); } }); });
+    r.on("error", () => resolve(null));
+    r.write(body);
+    r.end();
+  });
+}
+
 async function send(chatId, text) {
   if (!TOKEN) return;
   try { await httpsPost("api.telegram.org", "/bot" + TOKEN + "/sendMessage", { chat_id: chatId, text: text.slice(0, 4096) }); } catch {}
+}
+
+async function sendAction(chatId, action) {
+  if (!TOKEN) return;
+  try { await httpsPost("api.telegram.org", "/bot" + TOKEN + "/sendChatAction", { chat_id: chatId, action }); } catch {}
 }
 
 async function setWebhook() {
@@ -66,31 +116,52 @@ async function setWebhook() {
   } catch (e) { console.error("Webhook fail:", e.message); }
 }
 
+function handleMessage(msg) {
+  const chat = msg.chat.id;
+  if (msg.text) {
+    const t = msg.text.trim();
+    const isCmd = t.startsWith("/");
+    if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/status - Status\n/help - Commands");
+    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/status - Status\n/ping - Pong");
+    if (t === "/status") return send(chat, "Bot online (Webhook)\nAI: " + (GH_TOKEN ? "Connected" : "No GITHUB_TOKEN"));
+    if (t === "/ping") return send(chat, "pong");
+    if (!isCmd) {
+      send(chat, "Thinking...");
+      askAI(t).then(a => send(chat, a || "AI unavailable")).catch(() => send(chat, "Error"));
+    }
+    return;
+  }
+  if (msg.photo) {
+    const fileId = msg.photo[msg.photo.length - 1].file_id;
+    sendAction(chat, "typing");
+    downloadTelegramFile(fileId).then(buf => {
+      if (!buf) return send(chat, "Failed to download image.");
+      const b64 = buf.toString("base64");
+      const mime = "image/jpeg";
+      send(chat, "Analyzing image...");
+      analyzeImage(b64, mime).then(desc => send(chat, desc));
+    }).catch(() => send(chat, "Image download error."));
+    return;
+  }
+  if (msg.voice) {
+    sendAction(chat, "typing");
+    downloadTelegramFile(msg.voice.file_id).then(buf => {
+      if (!buf) return send(chat, "Failed to download voice.");
+      send(chat, "Transcribing...");
+      transcribeAudio(buf.toString("base64")).then(text => send(chat, text || "Transcription failed (whisper may not be available on this plan)."));
+    }).catch(() => send(chat, "Voice download error."));
+    return;
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/webhook") {
     let body = "";
     req.on("data", c => body += c);
     req.on("end", () => {
       try {
-        const msg = JSON.parse(body).message;
-        if (msg && msg.text) {
-          const t = msg.text.trim();
-          const chat = msg.chat.id;
-          const isCmd = t.startsWith("/");
-
-          if (t === "/start") {
-            send(chat, "Hello! I am OpenCode Bot.\n直接发文字给我，我会用AI回答。\n/status - Status\n/help - Commands");
-          } else if (t === "/help") {
-            send(chat, "直接发文字给我即可。\n/status - 状态\n/ping - Pong");
-          } else if (t === "/status") {
-            send(chat, "Bot online (Webhook)\nAI: " + (GH_TOKEN ? "Connected" : "No GITHUB_TOKEN"));
-          } else if (t === "/ping") {
-            send(chat, "pong");
-          } else if (!isCmd) {
-            send(chat, "Thinking...");
-            askAI(t).then(a => send(chat, a || "AI unavailable")).catch(() => send(chat, "Error"));
-          }
-        }
+        const update = JSON.parse(body);
+        if (update.message) handleMessage(update.message);
       } catch {}
       res.end("OK");
     });
