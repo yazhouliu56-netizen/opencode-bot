@@ -10,7 +10,8 @@ function httpsPost(host, path, body, extraHeaders) {
     const headers = { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), ...extraHeaders };
     const opts = { hostname: host, path, method: "POST", headers };
     const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } }); });
-    r.on("error", reject);
+    r.setTimeout(20000, () => { r.destroy(); resolve(null); });
+    r.on("error", () => resolve(null));
     r.write(data);
     r.end();
   });
@@ -20,7 +21,8 @@ function httpsGet(host, path, extraHeaders) {
   return new Promise((resolve, reject) => {
     const opts = { hostname: host, path, method: "GET", headers: { "User-Agent": "OpenCodeBot/1.0", ...extraHeaders } };
     const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } }); });
-    r.on("error", reject);
+    r.setTimeout(8000, () => { r.destroy(); resolve(null); });
+    r.on("error", () => resolve(null));
     r.end();
   });
 }
@@ -160,19 +162,25 @@ function detectQueryType(query) {
 
 // --- Multi-source context enrichment ---
 
+function timeout(ms) {
+  return new Promise(resolve => setTimeout(() => resolve(""), ms));
+}
+
 async function enrichContext(query) {
   const type = detectQueryType(query);
 
-  // Stock or weather get specialized data
-  const stock = await fetchStockFromQuery(query);
-  if (stock) {
-    const web = await searchDuck(query + " stock news");
-    return "[STOCK DATA]\n" + stock + (web ? "\n\n[WEB SEARCH]\n" + web : "");
+  // Stock or weather get specialized data (skip if query too short for ticker)
+  if (query.length > 2) {
+    const stock = await fetchStockFromQuery(query);
+    if (stock) {
+      const web = await searchDuck(query + " stock news");
+      return "[STOCK DATA]\n" + stock + (web ? "\n\n[WEB SEARCH]\n" + web : "");
+    }
   }
   const weather = await fetchWeather(query);
   if (weather) return "[WEATHER DATA]\n" + weather;
 
-  // General: multi-source parallel search
+  // General: multi-source parallel search (with 12s global timeout)
   const searches = [searchDuck(query)];
   if (type.isTechTrend) {
     searches.push(fetchGithubTrending(), fetchGithubSearch(query), fetchHN());
@@ -181,7 +189,10 @@ async function enrichContext(query) {
   }
   searches.push(fetchWikipedia(query));
 
-  const results = await Promise.all(searches);
+  const results = await Promise.race([
+    Promise.all(searches),
+    timeout(12000).then(() => searches.map(() => ""))
+  ]);
   const parts = results.filter(r => r && r.length > 0);
   return parts.length ? "[REAL-TIME DATA]\n" + parts.join("\n\n---\n\n") : "";
 }
