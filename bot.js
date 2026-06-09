@@ -145,10 +145,22 @@ function handleMessage(msg) {
   if (msg.text) {
     const t = msg.text.trim();
     const isCmd = t.startsWith("/");
-    if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/read <url> - Read & summarize a webpage\n/status - Status\n/help - Commands");
-    if (t === "/help") return send(chat, "Send text / photos / voice. AI auto-answers.\n/read <url> - Summarize a webpage\n/status - Info\n/ping - Pong");
-    if (t === "/status") return send(chat, "Bot online\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: " + (GH_TOKEN ? "GPT-4o" : "off") + "\nVoice: " + (GH_TOKEN ? "Whisper" : "off"));
+    if (t === "/start") return send(chat, "Hello! I am OpenCode Bot.\nSend text, photos, or voice messages.\n/read <url> - Read webpage\n/stock <code> - Stock price\n/status - Status");
+    if (t === "/help") return send(chat, "Send text/photos/voice. AI auto-answers.\n/read <url> - Summarize webpage\n/stock <code> - Stock price (e.g. AAPL, 0700.HK)\n/status - Info\n/ping - Pong");
+    if (t === "/status") return send(chat, "Bot online\nSearch: " + (GA_KEY && GA_CX ? "Google" : "DuckDuckGo") + "\nVision: " + (GH_TOKEN ? "GPT-4o" : "off") + "\nVoice: " + (GH_TOKEN ? "Whisper" : "off") + "\nStock: Yahoo Finance");
     if (t === "/ping") return send(chat, "pong");
+    if (t.startsWith("/stock ")) {
+      sendAction(chat, "typing");
+      const sym = t.slice(7).trim().toUpperCase();
+      httpsBuffer("https://query1.finance.yahoo.com/v8/finance/chart/" + encodeURIComponent(sym) + "?interval=1d&range=5d").then(buf => {
+        try {
+          const d = JSON.parse(buf.toString()).chart.result[0].meta;
+          const msg = d.shortName + " (" + d.symbol + ")\nPrice: " + d.regularMarketPrice + " " + d.currency + "\nHigh: " + d.regularMarketDayHigh + " | Low: " + d.regularMarketDayLow + "\nPrev Close: " + d.chartPreviousClose + "\nVolume: " + d.regularMarketVolume.toLocaleString();
+          send(chat, msg);
+        } catch { send(chat, "Stock not found. Try symbols like AAPL, 0700.HK, 600036.SS"); }
+      }).catch(() => send(chat, "Stock lookup failed."));
+      return;
+    }
     if (t.startsWith("/read ")) {
       sendAction(chat, "typing");
       const url = t.slice(6).trim();
