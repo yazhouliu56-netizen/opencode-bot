@@ -4,10 +4,11 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const GH_TOKEN = process.env.GITHUB_TOKEN;
 const PORT = process.env.PORT || 3000;
 
-function httpsPost(host, path, body) {
+function httpsPost(host, path, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const opts = { hostname: host, path, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } };
+    const headers = { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data), ...extraHeaders };
+    const opts = { hostname: host, path, method: "POST", headers };
     const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } }); });
     r.on("error", reject);
     r.write(data);
@@ -29,7 +30,7 @@ async function askAI(question) {
       model: "gpt-4o-mini",
       messages: [{ role: "system", content: "You are a helpful assistant. Answer concisely in the user's language." }, { role: "user", content: question }],
       max_tokens: 512,
-    });
+    }, { "Authorization": "Bearer " + GH_TOKEN });
     return d?.choices?.[0]?.message?.content || null;
   } catch { return null; }
 }
