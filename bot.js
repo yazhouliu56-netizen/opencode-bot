@@ -82,7 +82,7 @@ async function askAI(question) {
   if (context) msgs.splice(1, 0, { role: "system", content: "Web search results (use these to answer directly):\n" + context });
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-      model: "gpt-4o-mini", messages: msgs, max_tokens: 1024,
+      model: "gpt-4o", messages: msgs, max_tokens: 1024,
     }, { "Authorization": "Bearer " + GH_TOKEN });
     return d?.choices?.[0]?.message?.content || null;
   } catch { return null; }
@@ -157,7 +157,7 @@ function handleMessage(msg) {
         const html = buf.toString("utf8").replace(/<script[^>]*>[\s\S]*?<\/script>/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 4000);
         if (html.length < 50) return send(chat, "Could not read page content.");
         httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-          model: "gpt-4o-mini", max_tokens: 512,
+          model: "gpt-4o", max_tokens: 512,
           messages: [{ role: "system", content: "Summarize this webpage content concisely in Chinese." }, { role: "user", content: html }]
         }, { "Authorization": "Bearer " + GH_TOKEN }).then(d => send(chat, d?.choices?.[0]?.message?.content || "Summary failed.")).catch(() => send(chat, "AI error."));
       }).catch(() => send(chat, "Failed to fetch URL."));
