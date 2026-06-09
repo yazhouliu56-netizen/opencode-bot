@@ -23,13 +23,30 @@ function httpsGet(host, path) {
   });
 }
 
+async function searchWeb(query) {
+  return new Promise(resolve => {
+    const r = https.get("https://s.jina.ai/" + encodeURIComponent(query), { timeout: 8000 }, res => {
+      let d = ""; res.on("data", c => d += c); res.on("end", () => {
+        const m = d.match(/<article>([\s\S]*?)<\/article>/g);
+        resolve(m ? m.slice(0, 3).join("\n").replace(/<[^>]+>/g, "").slice(0, 2000) : "");
+      });
+    });
+    r.on("error", () => resolve(""));
+    r.end();
+  });
+}
+
 async function askAI(question) {
   if (!GH_TOKEN) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  let context = "";
+  try { context = await searchWeb(question); } catch {}
+  const sysMsg = "You are OpenCode AI assistant. Today is " + today + ". Answer helpfully and concisely. Use the web context below if relevant.";
+  const msgs = [{ role: "system", content: sysMsg }, { role: "user", content: question }];
+  if (context) msgs.splice(1, 0, { role: "system", content: "Web context:\n" + context });
   try {
     const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
-      model: "gpt-4o-mini",
-      messages: [{ role: "system", content: "You are a helpful assistant. Answer concisely in the user's language." }, { role: "user", content: question }],
-      max_tokens: 512,
+      model: "gpt-4o-mini", messages: msgs, max_tokens: 1024,
     }, { "Authorization": "Bearer " + GH_TOKEN });
     return d?.choices?.[0]?.message?.content || null;
   } catch { return null; }
