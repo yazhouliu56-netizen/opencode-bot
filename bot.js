@@ -1,12 +1,13 @@
 const http = require("http");
 const https = require("https");
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const GH_TOKEN = process.env.GITHUB_TOKEN;
 const PORT = process.env.PORT || 3000;
 
 function httpsPost(host, path, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
-    const opts = { hostname: host, path: path, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } };
+    const opts = { hostname: host, path, method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } };
     const r = https.request(opts, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } }); });
     r.on("error", reject);
     r.write(data);
@@ -19,6 +20,18 @@ function httpsGet(host, path) {
     const r = https.get("https://" + host + path, res => { let d = ""; res.on("data", c => d += c); res.on("end", () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } }); });
     r.on("error", reject);
   });
+}
+
+async function askAI(question) {
+  if (!GH_TOKEN) return null;
+  try {
+    const d = await httpsPost("models.inference.ai.azure.com", "/chat/completions", {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: question }],
+      max_tokens: 512,
+    });
+    return d?.choices?.[0]?.message?.content || null;
+  } catch { return null; }
 }
 
 async function send(chatId, text) {
@@ -44,12 +57,27 @@ const server = http.createServer((req, res) => {
         const msg = JSON.parse(body).message;
         if (msg && msg.text) {
           const t = msg.text.trim();
-          if (t === "/start") send(msg.chat.id, "Hello! I am OpenCode Bot. Commands: /help");
-          else if (t === "/help") send(msg.chat.id, "/status /ping /echo <text>");
-          else if (t === "/status") send(msg.chat.id, "Online (Webhook)");
-          else if (t === "/ping") send(msg.chat.id, "pong");
-          else if (t.startsWith("/echo ")) send(msg.chat.id, t.slice(6));
-          else send(msg.chat.id, "Unknown: " + t + " - use /help");
+          const chat = msg.chat.id;
+
+          if (t === "/start") {
+            send(chat, "Hello! I am OpenCode Bot.\n/help - Commands\n/ask <q> - AI answer\n/status - Status\n/ping - Pong");
+          } else if (t === "/help") {
+            send(chat, "/ask <q> - Ask AI\n/status - Status\n/ping - Pong\n/echo <t> - Echo");
+          } else if (t === "/status") {
+            let s = "Bot online (Webhook)\n";
+            s += GH_TOKEN ? "AI: Connected\n" : "AI: No GITHUB_TOKEN (set in ENV)\n";
+            send(chat, s);
+          } else if (t === "/ping") {
+            send(chat, "pong");
+          } else if (t.startsWith("/ask ")) {
+            const q = t.slice(5);
+            send(chat, "Thinking...");
+            askAI(q).then(a => send(chat, a || "AI unavailable (set GITHUB_TOKEN)")).catch(() => send(chat, "Error"));
+          } else if (t.startsWith("/echo ")) {
+            send(chat, t.slice(6));
+          } else {
+            send(chat, "Unknown: " + t + "\nUse /help");
+          }
         }
       } catch {}
       res.end("OK");
