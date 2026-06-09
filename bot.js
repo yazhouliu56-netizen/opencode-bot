@@ -37,10 +37,16 @@ async function downloadTelegramFile(fileId) {
 
 async function searchWeb(query) {
   return new Promise(resolve => {
-    const r = https.get("https://s.jina.ai/" + encodeURIComponent(query), { timeout: 8000 }, res => {
+    const r = https.get("https://lite.duckduckgo.com/lite/?q=" + encodeURIComponent(query), { timeout: 10000, headers: { "User-Agent": "Mozilla/5.0" } }, res => {
       let d = ""; res.on("data", c => d += c); res.on("end", () => {
-        const m = d.match(/<article>([\s\S]*?)<\/article>/g);
-        resolve(m ? m.slice(0, 3).join("\n").replace(/<[^>]+>/g, "").slice(0, 2000) : "");
+        const titles = [...d.matchAll(/class='result-link'>([^<]+)<\/a>/g)].map(m => m[1]);
+        const snippets = [...d.matchAll(/class='result-snippet'>([^<]*(?:<[^>]+>[^<]*)*)<\/td>/g)].map(m => m[1].replace(/<[^>]+>/g, ""));
+        const urls = [...d.matchAll(/class='link-text'>([^<]+)<\/span>/g)].map(m => m[1]);
+        const lines = [];
+        for (let i = 0; i < Math.min(3, titles.length); i++) {
+          lines.push((i + 1) + ". " + titles[i] + " - " + (urls[i] || "") + "\n   " + (snippets[i] || ""));
+        }
+        resolve(lines.join("\n\n").slice(0, 2000));
       });
     });
     r.on("error", () => resolve(""));
